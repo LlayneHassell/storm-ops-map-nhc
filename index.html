@@ -91,6 +91,16 @@
     .forecast-timeline li { margin:4px 0; }
     .timing-note { background:#fff8df; border-left:4px solid #d99b00; padding:8px 10px; margin:8px 0; font-size:12px; }
     .leaflet-control-layers { font-size:13px; }
+    /* On desktop, place zoom controls beneath the header on the right so the
+       fixed search bar cannot cover them. */
+    .leaflet-top.leaflet-left {
+      top:78px;
+      left:auto;
+      right:12px;
+    }
+    .leaflet-top.leaflet-left .leaflet-control-zoom {
+      margin:0 !important;
+    }
     /* Keep the layer selector fully below the fixed header and search bar. */
     .leaflet-top.leaflet-right { top:0; right:12px; }
     .leaflet-top.leaflet-right .leaflet-control-layers {
@@ -111,6 +121,8 @@
     .app-header, .quick-actions, .status, .legend, .side-panel { pointer-events:auto; }
     .leaflet-top, .leaflet-bottom { z-index:800; }
     @media (max-width:760px) {
+      /* Restore Leaflet's left-side mobile control position. */
+      .leaflet-top.leaflet-left { top:0; left:0; right:auto; }
       .app-header { top:8px; left:8px; right:8px; height:auto; min-height:58px; flex-wrap:wrap; padding:9px 10px; gap:8px; }
       .brand-mark { width:34px; height:34px; font-size:18px; }
       .brand-copy { min-width:0; flex:1; }
