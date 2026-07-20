@@ -79,6 +79,17 @@
     .leaflet-top.leaflet-right .leaflet-control-layers {
       margin-top:138px !important;
     }
+
+    /* Leaflet popups live inside the map stacking context, so temporarily fade
+       dashboard overlays while a popup is open to keep the popup fully readable. */
+    .status, .legend, .side-panel { transition: opacity .15s ease, visibility .15s ease; }
+    body.map-popup-open .status,
+    body.map-popup-open .legend,
+    body.map-popup-open .side-panel {
+      opacity:0 !important;
+      visibility:hidden !important;
+      pointer-events:none !important;
+    }
     a { word-break:break-word; }
     .app-header, .quick-actions, .status, .legend, .side-panel { pointer-events:auto; }
     .leaflet-top, .leaflet-bottom { z-index:800; }
@@ -173,6 +184,10 @@ const SUBS_URL      = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQtCVV811
 
 /*** 2) MAP SETUP (free OpenStreetMap tiles) ***/
 const map = L.map('map').setView([39, -98], 4);
+
+// Keep marker popups readable by clearing dashboard overlays until the popup closes.
+map.on('popupopen', () => document.body.classList.add('map-popup-open'));
+map.on('popupclose', () => document.body.classList.remove('map-popup-open'));
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
