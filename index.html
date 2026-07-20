@@ -66,7 +66,10 @@
     .result-list { margin-top:8px; max-height:240px; overflow:auto; }
     .result-item { padding:8px; border-bottom:1px solid #eee; cursor:pointer; }
     .result-item:hover { background:#f2f6fa; }
-    .forecast-label { background:rgba(255,255,255,.92); border:1px solid #333; border-radius:4px; color:#111; font-weight:bold; padding:1px 4px; box-shadow:none; }
+    .forecast-label { background:rgba(255,255,255,.94); border:1px solid #333; border-radius:4px; color:#111; font-weight:bold; padding:2px 5px; box-shadow:none; white-space:nowrap; }
+    .forecast-timeline { margin:8px 0 2px; padding-left:18px; }
+    .forecast-timeline li { margin:4px 0; }
+    .timing-note { background:#fff8df; border-left:4px solid #d99b00; padding:8px 10px; margin:8px 0; font-size:12px; }
     .leaflet-control-layers { font-size:13px; }
     /* Keep the layer selector fully below the fixed header and search bar. */
     .leaflet-top.leaflet-right { top:0; right:12px; }
@@ -580,17 +583,54 @@ function drawNHCCone(geojson) {
   return features.length;
 }
 
+function forecastHourFromProps(props = {}) {
+  const value = props.fcsthr ?? props.FCSHR ?? props.tau ?? props.TAU ?? props.forecasthr ?? props.FORECASTHR;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function forecastLabelFromProps(props = {}) {
+  return props.dvlbl || props.DATELBL || props.validtime || props.VALIDTIME ||
+         props.fldatelbl || props.FLDATELBL || props.adjdate || props.ADJDATE || "";
+}
+
+function formatForecastLabel(value) {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "number" || /^\d{10,13}$/.test(String(value))) {
+    let n = Number(value);
+    if (n < 1e12) n *= 1000;
+    const d = new Date(n);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleString([], { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit", timeZoneName:"short" });
+  }
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime()) && String(value).match(/[T:\/-]/)) {
+    return d.toLocaleString([], { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit", timeZoneName:"short" });
+  }
+  return String(value);
+}
+
 function uniqueStormsFromFeatures(features) {
   const byName = new Map();
   for (const feature of features || []) {
     const props = feature.properties || {};
     const name = nhcFeatureTitle(props);
-    const current = byName.get(name) || { name, type: "", advisory: "", wind: "", validTime: "" };
+    const current = byName.get(name) || { name, type: "", advisory: "", wind: "", validTime: "", forecasts: [] };
     current.type = current.type || props.stormtype || props.STORMTYPE || props.tcclass || props.TCCLASS || "";
     current.advisory = current.advisory || props.advnum || props.ADVNUM || props.advisory || "";
     current.wind = current.wind || props.maxwind || props.MAXWIND || props.windspd || props.WINDSPD || "";
-    current.validTime = current.validTime || props.validtime || props.VALIDTIME || props.dvlbl || props.DATELBL || "";
+    const rawLabel = forecastLabelFromProps(props);
+    current.validTime = current.validTime || formatForecastLabel(rawLabel);
+    if (rawLabel) {
+      const label = formatForecastLabel(rawLabel);
+      const hour = forecastHourFromProps(props);
+      if (!current.forecasts.some(item => item.label === label && item.hour === hour)) {
+        current.forecasts.push({ label, hour, wind: props.maxwind || props.MAXWIND || props.windspd || props.WINDSPD || "" });
+      }
+    }
     byName.set(name, current);
+  }
+  for (const storm of byName.values()) {
+    storm.forecasts.sort((a,b) => (a.hour ?? 9999) - (b.hour ?? 9999));
   }
   return [...byName.values()];
 }
@@ -622,9 +662,12 @@ function drawNHCTrack(trackGeoJSON, pointsGeoJSON) {
           nhcFeatureTitle(props), nhcPopupLines(props),
           "Open NHC GIS Page", "https://www.nhc.noaa.gov/gis/"
         ));
-        const label = props.dvlbl || props.DATELBL || props.fcsthr || props.tau;
-        if (label !== undefined && label !== null && label !== "") {
-          layer.bindTooltip(String(label), { permanent:false, direction:"top", className:"forecast-label" });
+        const rawDate = forecastLabelFromProps(props);
+        const hour = forecastHourFromProps(props);
+        const dateLabel = formatForecastLabel(rawDate);
+        const label = dateLabel || (hour !== null ? `+${hour} hr` : "");
+        if (label) {
+          layer.bindTooltip(label, { permanent:true, direction:"top", className:"forecast-label", opacity:0.95 });
         }
       }
     }).addTo(nhcPointsLayer);
@@ -767,7 +810,9 @@ function openStormPanel() {
       ${storm.type ? `<div><b>Classification:</b> ${escapeHtml(storm.type)}</div>` : ""}
       ${storm.advisory ? `<div><b>Advisory:</b> ${escapeHtml(storm.advisory)}</div>` : ""}
       ${storm.wind ? `<div><b>Maximum wind:</b> ${escapeHtml(storm.wind)} kt</div>` : ""}
-      ${storm.validTime ? `<div><b>Forecast time:</b> ${escapeHtml(storm.validTime)}</div>` : ""}
+      ${storm.validTime ? `<div><b>Latest forecast point:</b> ${escapeHtml(storm.validTime)}</div>` : ""}
+      ${storm.forecasts?.length ? `<div><b>Projected timing:</b></div><ul class="forecast-timeline">${storm.forecasts.slice(0,10).map(point => `<li>${point.hour !== null ? `<b>+${point.hour} hr:</b> ` : ""}${escapeHtml(point.label)}${point.wind ? ` — ${escapeHtml(point.wind)} kt` : ""}</li>`).join("")}</ul>` : ""}
+      <div class="timing-note"><b>Important:</b> These are NHC forecast-point dates along the projected track. They are not a guaranteed landfall time; timing and location may change with each advisory.</div>
     </div>`).join("") : `<p>No active NHC tropical forecast is currently published.</p>`;
   const contractNames = markersInCone(contractMarkers).slice(0,50).map(x=>`<li>${escapeHtml(x.name || "Contract")}${x.state ? ` — ${escapeHtml(x.state)}` : ""}</li>`).join("");
   const subNames = markersInCone(subMarkers).slice(0,50).map(x=>`<li>${escapeHtml(x.name || "Subcontractor")}${x.state ? ` — ${escapeHtml(x.state)}` : ""}</li>`).join("");
