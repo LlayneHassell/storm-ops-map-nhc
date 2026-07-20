@@ -151,6 +151,14 @@
       .quick-btn { white-space:nowrap; flex:0 0 auto; }
       .status, .legend { display:none !important; }
       .mobile-panels-button { display:block; top:174px; left:8px; }
+      /* A full-screen Storm/Results panel needs the entire toolbar area. Hide the
+         floating Panels button while that panel is open so Copy/CSV/Print stay tappable. */
+      body.mobile-results-open .mobile-panels-button,
+      body.mobile-results-open .mobile-panels-drawer {
+        opacity:0 !important;
+        visibility:hidden !important;
+        pointer-events:none !important;
+      }
       .mobile-panels-drawer { display:block; top:174px; left:8px; width:min(330px, calc(100vw - 16px)); max-height:calc(100vh - 182px); transform:translateX(calc(-100% - 16px)); transition:transform .22s ease; }
       .mobile-panels-drawer.open { transform:translateX(0); }
       .side-panel { top:8px; right:8px; width:calc(100vw - 16px); height:calc(100vh - 16px); }
@@ -1057,7 +1065,7 @@ function openConeResults(kind) {
       <button onclick="printConeResults('${kind}')">Print</button>
     </div>
     <div class="result-list">${cards}</div>`;
-  document.getElementById("stormPanel").classList.add("open");
+  setStormPanelOpen(true);
 }
 
 function showConeContracts() { openConeResults("contracts"); }
@@ -1074,7 +1082,7 @@ function runMapSearch() {
     const body = matches.slice(0,100).map((x,i)=>`<div class="result-item" onclick="focusSearchResult(${i})"><b>${escapeHtml(x.name || "Result")}</b>${x.state ? `<br><small>${escapeHtml(x.state)}</small>` : ""}</div>`).join("");
     window.currentSearchResults = matches;
     document.getElementById("stormPanelBody").innerHTML = `<h3>Search Results (${matches.length})</h3><div class="result-list">${body}</div>`;
-    document.getElementById("stormPanel").classList.add("open");
+    setStormPanelOpen(true);
   }
 }
 
@@ -1108,10 +1116,18 @@ function openStormPanel() {
     ${contractNames ? `<h4>Contracts</h4><ul>${contractNames}</ul>` : ""}
     ${subNames ? `<h4>Subcontractors</h4><ul>${subNames}</ul>` : ""}
     <small>Lists are limited to the first 50 results in each category.</small>`;
-  document.getElementById("stormPanel").classList.add("open");
+  setStormPanelOpen(true);
 }
 
-function closeStormPanel() { document.getElementById("stormPanel").classList.remove("open"); }
+function setStormPanelOpen(open) {
+  const panel = document.getElementById("stormPanel");
+  if (!panel) return;
+  panel.classList.toggle("open", open);
+  document.body.classList.toggle("mobile-results-open", open);
+  if (open) toggleMobilePanels(false);
+}
+
+function closeStormPanel() { setStormPanelOpen(false); }
 
 window.addEventListener("resize", () => {
   if (!window.matchMedia("(max-width: 760px)").matches) toggleMobilePanels(false);
