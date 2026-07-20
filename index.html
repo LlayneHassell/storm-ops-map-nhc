@@ -120,7 +120,8 @@
       .header-btn { flex:0 0 auto; }
       .quick-actions { top:126px; left:8px; right:8px; max-width:none; flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
       .quick-btn { white-space:nowrap; flex:0 0 auto; }
-      .status { top:174px; left:8px; width:285px; max-width:calc(100vw - 16px); max-height:34vh; }
+      /* Keep the summary below Leaflet's mobile zoom controls. */
+      .status { top:252px; left:8px; width:285px; max-width:calc(100vw - 16px); max-height:calc(100vh - 265px); }
       .status.collapsed { width:auto; max-width:calc(100vw - 16px); }
       .status.collapsed .status-heading b { font-size:12px; }
       .legend { right:8px; bottom:8px; width:270px; max-width:calc(100vw - 16px); max-height:42vh; }
