@@ -112,7 +112,9 @@
     .status, .legend, .side-panel { transition: opacity .15s ease, visibility .15s ease; }
     body.map-popup-open .status,
     body.map-popup-open .legend,
-    body.map-popup-open .side-panel {
+    body.map-popup-open .side-panel,
+    body.map-popup-open .mobile-panels-button,
+    body.map-popup-open .mobile-panels-drawer {
       opacity:0 !important;
       visibility:hidden !important;
       pointer-events:none !important;
@@ -120,11 +122,24 @@
     a { word-break:break-word; }
     .app-header, .quick-actions, .status, .legend, .side-panel { pointer-events:auto; }
     .leaflet-top, .leaflet-bottom { z-index:800; }
+    .mobile-panels-button, .mobile-panels-drawer { display:none; }
+    .mobile-panels-button { position:fixed; z-index:12050; border:0; border-radius:10px; background:var(--navy); color:#fff; box-shadow:var(--shadow); font-weight:700; cursor:pointer; padding:10px 13px; }
+    .mobile-panels-drawer { position:fixed; z-index:12040; background:#fff; border-radius:12px; box-shadow:var(--shadow); overflow:auto; }
+    .mobile-panels-header { position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:11px 12px; background:var(--navy); color:#fff; }
+    .mobile-panels-close { border:0; border-radius:7px; padding:5px 8px; background:#fff; color:var(--navy); font-weight:700; cursor:pointer; }
+    .mobile-panel-section { border-bottom:1px solid #e5e5e5; }
+    .mobile-panel-section > button { width:100%; border:0; background:#fff; color:var(--navy); padding:12px; text-align:left; font-weight:700; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+    .mobile-panel-content { display:none; padding:0 12px 12px; font-size:13px; }
+    .mobile-panel-section.open .mobile-panel-content { display:block; }
+    .mobile-panel-section.open > button .panel-chevron { transform:rotate(180deg); }
+    .panel-chevron { transition:transform .15s ease; }
+    .mobile-panel-actions { display:grid; grid-template-columns:1fr; gap:7px; }
+    .mobile-panel-actions button { border:0; border-radius:8px; padding:9px 10px; background:#eaf0f6; color:var(--navy); font-weight:700; text-align:left; cursor:pointer; }
+    .mobile-layer-row { display:flex; align-items:center; gap:8px; margin:8px 0; }
+    .mobile-layer-row input { width:18px; height:18px; }
     @media (max-width:760px) {
-      /* Give mobile its own zoom position below the header, search field,
-         and quick-action row. This prevents the desktop rule from pushing
-         the controls behind the search bar. */
-      .leaflet-top.leaflet-left { top:210px; left:8px; right:auto; }
+      /* Mobile order: header/search, quick actions, Panels button, then zoom controls. */
+      .leaflet-top.leaflet-left { top:212px; left:8px; right:auto; }
       .app-header { top:8px; left:8px; right:8px; height:auto; min-height:58px; flex-wrap:wrap; padding:9px 10px; gap:8px; }
       .brand-mark { width:34px; height:34px; font-size:18px; }
       .brand-copy { min-width:0; flex:1; }
@@ -134,12 +149,10 @@
       .header-btn { flex:0 0 auto; }
       .quick-actions { top:126px; left:8px; right:8px; max-width:none; flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
       .quick-btn { white-space:nowrap; flex:0 0 auto; }
-      /* Keep the summary below Leaflet's mobile zoom controls. */
-      .status { top:300px; left:8px; width:285px; max-width:calc(100vw - 16px); max-height:calc(100vh - 313px); }
-      .status.collapsed { width:auto; max-width:calc(100vw - 16px); }
-      .status.collapsed .status-heading b { font-size:12px; }
-      .legend { right:8px; bottom:8px; width:270px; max-width:calc(100vw - 16px); max-height:42vh; }
-      .legend.collapsed { width:auto; }
+      .status, .legend { display:none !important; }
+      .mobile-panels-button { display:block; top:174px; left:8px; }
+      .mobile-panels-drawer { display:block; top:174px; left:8px; width:min(330px, calc(100vw - 16px)); max-height:calc(100vh - 182px); transform:translateX(calc(-100% - 16px)); transition:transform .22s ease; }
+      .mobile-panels-drawer.open { transform:translateX(0); }
       .side-panel { top:8px; right:8px; width:calc(100vw - 16px); height:calc(100vh - 16px); }
       .leaflet-control-layers { display:none; }
       .leaflet-control-zoom { margin:0 !important; }
@@ -169,6 +182,31 @@
   <button class="quick-btn" onclick="showConeSubs()">🚚 Subs in Cone</button>
   <button class="quick-btn" onclick="resetMapView()">↺ Reset View</button>
   <button class="quick-btn" onclick="openStormPanel()">Storm Details</button>
+</div>
+
+<button class="mobile-panels-button" id="mobilePanelsButton" onclick="toggleMobilePanels()" aria-expanded="false">☰ Panels</button>
+<div class="mobile-panels-drawer" id="mobilePanelsDrawer" aria-hidden="true">
+  <div class="mobile-panels-header"><b>Dashboard Panels</b><button class="mobile-panels-close" onclick="toggleMobilePanels(false)">Close</button></div>
+  <div class="mobile-panel-section" id="mobileSummarySection">
+    <button onclick="toggleMobilePanelSection('mobileSummarySection')">📊 Live Operations Summary <span class="panel-chevron">⌄</span></button>
+    <div class="mobile-panel-content" id="mobileSummaryContent">Loading…</div>
+  </div>
+  <div class="mobile-panel-section" id="mobileLegendSection">
+    <button onclick="toggleMobilePanelSection('mobileLegendSection')">🗝️ Map Color Key <span class="panel-chevron">⌄</span></button>
+    <div class="mobile-panel-content" id="mobileLegendContent"></div>
+  </div>
+  <div class="mobile-panel-section" id="mobileStormSection">
+    <button onclick="toggleMobilePanelSection('mobileStormSection')">🌀 Storm & Results <span class="panel-chevron">⌄</span></button>
+    <div class="mobile-panel-content mobile-panel-actions">
+      <button onclick="openFromMobilePanels(openStormPanel)">Storm Details</button>
+      <button onclick="openFromMobilePanels(showConeContracts)">Contracts in Cone</button>
+      <button onclick="openFromMobilePanels(showConeSubs)">Subcontractors in Cone</button>
+    </div>
+  </div>
+  <div class="mobile-panel-section" id="mobileLayersSection">
+    <button onclick="toggleMobilePanelSection('mobileLayersSection')">🗂️ Map Layers <span class="panel-chevron">⌄</span></button>
+    <div class="mobile-panel-content" id="mobileLayersContent"></div>
+  </div>
 </div>
 
 <div class="status" id="statusBox">Loading…</div>
@@ -236,7 +274,7 @@ const nhcConeLayer = L.layerGroup().addTo(map);
 const nhcTrackLayer = L.layerGroup().addTo(map);
 const nhcPointsLayer = L.layerGroup().addTo(map);
 
-L.control.layers({}, {
+const layerControl = L.control.layers({}, {
   "Contracts": contractsLayer,
   "Subcontractors": subsLayer,
   "NOAA Weather Alerts": alertsLayer,
@@ -296,6 +334,8 @@ function setStatus() {
        ${stormSummaryHtml()}
        <small class="nhc-note">NHC checked: ${escapeHtml(lastNHCUpdate)}${lastNHCMessage ? `<br>${escapeHtml(lastNHCMessage)}` : ""}</small>
      </div>`;
+  syncMobileSummary();
+  requestAnimationFrame(positionMobileZoomBelowSummary);
 }
 
 /*** HELPERS ***/
@@ -812,6 +852,22 @@ function updateHighlights() {
   setStatus();
 }
 
+function positionMobileZoomBelowSummary() {
+  const zoomCorner = document.querySelector(".leaflet-top.leaflet-left");
+  const panelsButton = document.getElementById("mobilePanelsButton");
+  if (!zoomCorner) return;
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    const nextTop = panelsButton ? panelsButton.offsetTop + panelsButton.offsetHeight + 8 : 212;
+    zoomCorner.style.top = `${nextTop}px`;
+    zoomCorner.style.left = "8px";
+    zoomCorner.style.right = "auto";
+  } else {
+    zoomCorner.style.top = "";
+    zoomCorner.style.left = "";
+    zoomCorner.style.right = "";
+  }
+}
+
 function toggleStatusSummary(forceCollapsed) {
   const box = document.getElementById("statusBox");
   const shouldCollapse = typeof forceCollapsed === "boolean" ? forceCollapsed : !box.classList.contains("collapsed");
@@ -822,6 +878,7 @@ function toggleStatusSummary(forceCollapsed) {
     button.setAttribute("aria-expanded", String(!shouldCollapse));
   }
   try { localStorage.setItem("lgsSummaryCollapsed", shouldCollapse ? "1" : "0"); } catch (e) {}
+  requestAnimationFrame(positionMobileZoomBelowSummary);
 }
 
 function initializeStatusSummary() {
@@ -829,12 +886,67 @@ function initializeStatusSummary() {
   try { saved = localStorage.getItem("lgsSummaryCollapsed"); } catch (e) {}
   const collapseByDefault = saved === null ? window.matchMedia("(max-width: 760px)").matches : saved === "1";
   document.getElementById("statusBox").classList.toggle("collapsed", collapseByDefault);
+  requestAnimationFrame(positionMobileZoomBelowSummary);
 }
 
 function toggleLegend() {
   const box = document.getElementById("legendBox");
   box.classList.toggle("collapsed");
   box.querySelector("button").textContent = box.classList.contains("collapsed") ? "Show" : "Hide";
+}
+
+function syncMobileSummary() {
+  const source = document.querySelector("#statusBox .status-body");
+  const target = document.getElementById("mobileSummaryContent");
+  if (source && target) target.innerHTML = source.innerHTML;
+}
+
+function buildMobileLegend() {
+  const source = document.querySelector("#legendBox .legend-body");
+  const target = document.getElementById("mobileLegendContent");
+  if (source && target && !target.innerHTML.trim()) target.innerHTML = source.innerHTML;
+}
+
+const mobileLayerDefinitions = [
+  ["Contracts", contractsLayer],
+  ["Subcontractors", subsLayer],
+  ["NOAA Weather Alerts", alertsLayer],
+  ["NHC Forecast Cones", nhcConeLayer],
+  ["NHC Forecast Tracks", nhcTrackLayer],
+  ["NHC Forecast Points", nhcPointsLayer]
+];
+
+function buildMobileLayers() {
+  const target = document.getElementById("mobileLayersContent");
+  if (!target || target.dataset.ready) return;
+  target.innerHTML = mobileLayerDefinitions.map((entry, i) => `<label class="mobile-layer-row"><input type="checkbox" data-layer-index="${i}" ${map.hasLayer(entry[1]) ? "checked" : ""}> <span>${entry[0]}</span></label>`).join("");
+  target.querySelectorAll("input[data-layer-index]").forEach(input => input.addEventListener("change", () => {
+    const layer = mobileLayerDefinitions[Number(input.dataset.layerIndex)][1];
+    if (input.checked) map.addLayer(layer); else map.removeLayer(layer);
+  }));
+  target.dataset.ready = "1";
+}
+
+function toggleMobilePanels(forceOpen) {
+  const drawer = document.getElementById("mobilePanelsDrawer");
+  const button = document.getElementById("mobilePanelsButton");
+  const open = typeof forceOpen === "boolean" ? forceOpen : !drawer.classList.contains("open");
+  drawer.classList.toggle("open", open);
+  drawer.setAttribute("aria-hidden", String(!open));
+  button.setAttribute("aria-expanded", String(open));
+  button.textContent = open ? "✕ Close Panels" : "☰ Panels";
+  if (open) { buildMobileLegend(); buildMobileLayers(); syncMobileSummary(); }
+}
+
+function toggleMobilePanelSection(id) {
+  const section = document.getElementById(id);
+  if (!section) return;
+  section.classList.toggle("open");
+}
+
+function openFromMobilePanels(action) {
+  toggleMobilePanels(false);
+  if (typeof action === "function") action();
 }
 
 function resetMapView() {
@@ -1001,10 +1113,17 @@ function openStormPanel() {
 
 function closeStormPanel() { document.getElementById("stormPanel").classList.remove("open"); }
 
+window.addEventListener("resize", () => {
+  if (!window.matchMedia("(max-width: 760px)").matches) toggleMobilePanels(false);
+  requestAnimationFrame(positionMobileZoomBelowSummary);
+});
+
 /*** AUTO-REFRESH ***/
 function start() {
   setStatus();
   initializeStatusSummary();
+  buildMobileLegend();
+  buildMobileLayers();
 loadContracts();
   loadSubs();
   loadNOAAAlerts();
