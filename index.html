@@ -121,8 +121,10 @@
     .app-header, .quick-actions, .status, .legend, .side-panel { pointer-events:auto; }
     .leaflet-top, .leaflet-bottom { z-index:800; }
     @media (max-width:760px) {
-      /* Restore Leaflet's left-side mobile control position. */
-      .leaflet-top.leaflet-left { top:0; left:0; right:auto; }
+      /* Give mobile its own zoom position below the header, search field,
+         and quick-action row. This prevents the desktop rule from pushing
+         the controls behind the search bar. */
+      .leaflet-top.leaflet-left { top:210px; left:8px; right:auto; }
       .app-header { top:8px; left:8px; right:8px; height:auto; min-height:58px; flex-wrap:wrap; padding:9px 10px; gap:8px; }
       .brand-mark { width:34px; height:34px; font-size:18px; }
       .brand-copy { min-width:0; flex:1; }
@@ -133,14 +135,14 @@
       .quick-actions { top:126px; left:8px; right:8px; max-width:none; flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
       .quick-btn { white-space:nowrap; flex:0 0 auto; }
       /* Keep the summary below Leaflet's mobile zoom controls. */
-      .status { top:252px; left:8px; width:285px; max-width:calc(100vw - 16px); max-height:calc(100vh - 265px); }
+      .status { top:300px; left:8px; width:285px; max-width:calc(100vw - 16px); max-height:calc(100vh - 313px); }
       .status.collapsed { width:auto; max-width:calc(100vw - 16px); }
       .status.collapsed .status-heading b { font-size:12px; }
       .legend { right:8px; bottom:8px; width:270px; max-width:calc(100vw - 16px); max-height:42vh; }
       .legend.collapsed { width:auto; }
       .side-panel { top:8px; right:8px; width:calc(100vw - 16px); height:calc(100vh - 16px); }
       .leaflet-control-layers { display:none; }
-      .leaflet-control-zoom { margin-top:166px !important; }
+      .leaflet-control-zoom { margin:0 !important; }
     }
 
   </style>
