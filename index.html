@@ -69,6 +69,14 @@
     .result-list { margin-top:8px; max-height:240px; overflow:auto; }
     .result-item { padding:8px; border-bottom:1px solid #eee; cursor:pointer; }
     .result-item:hover { background:#f2f6fa; }
+    .results-toolbar { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px; }
+    .results-toolbar button { border:0; border-radius:7px; padding:7px 9px; cursor:pointer; font-weight:700; background:#eaf0f6; color:var(--navy); }
+    .results-summary { background:#f4f7fa; border-left:4px solid var(--blue); padding:8px 10px; margin:8px 0; font-size:12px; }
+    .result-card { padding:10px 8px; border-bottom:1px solid #e6e6e6; cursor:pointer; }
+    .result-card:hover { background:#f2f6fa; }
+    .result-meta { font-size:12px; line-height:1.45; margin-top:3px; }
+    .result-meta a { color:#0b5cab; }
+    .result-empty { padding:18px 8px; text-align:center; color:#555; }
     .forecast-label { background:rgba(255,255,255,.94); border:1px solid #333; border-radius:4px; color:#111; font-weight:bold; padding:2px 5px; box-shadow:none; white-space:nowrap; }
     .forecast-timeline { margin:8px 0 2px; padding-left:18px; }
     .forecast-timeline li { margin:4px 0; }
@@ -375,7 +383,7 @@ function loadContracts() {
       const email = getField(row, ["Email", "email"]);
 
       const expirationStatus = contractExpirationStatus(exp);
-      const markerData = { lat, lon, expiration: exp, name: name || "Contract", state, searchText: [name,state,contact,email].filter(Boolean).join(" ").toLowerCase(), insideAlert: false, insideCone: false };
+      const markerData = { lat, lon, expiration: exp, name: name || "Contract", state, contact, phone: number, email, link, address: "", notes: "", type: "Contract", searchText: [name,state,contact,email].filter(Boolean).join(" ").toLowerCase(), insideAlert: false, insideCone: false };
       const marker = L.circleMarker([lat, lon], contractStyle(markerData)).addTo(contractsLayer);
 
       const popup = makePopup(
@@ -434,7 +442,7 @@ function loadSubs() {
         ? subName
         : (address ? `Subcontractor @ ${address}` : "Subcontractor");
 
-      const markerData = { lat, lon, name: title, state, address, searchText: [title,address,state,contact,email,phone,notes].filter(Boolean).join(" ").toLowerCase(), insideAlert: false, insideCone: false };
+      const markerData = { lat, lon, name: title, state, address, contact, phone, email, notes, link: "", expiration: "", type: "Subcontractor", searchText: [title,address,state,contact,email,phone,notes].filter(Boolean).join(" ").toLowerCase(), insideAlert: false, insideCone: false };
       const marker = L.circleMarker([lat, lon], subStyle(markerData)).addTo(subsLayer);
 
       const popup = makePopup(
@@ -794,8 +802,102 @@ function zoomToItems(items, emptyMessage) {
   map.fitBounds(bounds.pad(0.18));
 }
 
-function showConeContracts() { zoomToItems(markersInCone(contractMarkers), "No contracts are currently inside an active NHC forecast cone."); }
-function showConeSubs() { zoomToItems(markersInCone(subMarkers), "No subcontractors are currently inside an active NHC forecast cone."); }
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function resultRows(items) {
+  return items.map(o => ({
+    Type: o.type || "",
+    Name: o.name || "",
+    Address: o.address || "",
+    State: o.state || "",
+    Contact: o.contact || "",
+    Phone: o.phone || "",
+    Email: o.email || "",
+    Expiration: o.expiration || "",
+    Notes: o.notes || "",
+    Link: o.link || "",
+    Latitude: o.lat,
+    Longitude: o.lon
+  }));
+}
+
+function downloadConeResults(kind) {
+  const items = kind === "contracts" ? markersInCone(contractMarkers) : markersInCone(subMarkers);
+  if (!items.length) { alert("There are no results to download."); return; }
+  const rows = resultRows(items);
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.map(csvEscape).join(","), ...rows.map(r => headers.map(h => csvEscape(r[h])).join(","))].join("\r\n");
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${kind}-inside-nhc-cone.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+async function copyConeResults(kind) {
+  const items = kind === "contracts" ? markersInCone(contractMarkers) : markersInCone(subMarkers);
+  if (!items.length) { alert("There are no results to copy."); return; }
+  const text = items.map((o,i) => `${i+1}. ${o.name || "Result"}${o.state ? ` — ${o.state}` : ""}${o.contact ? `\nContact: ${o.contact}` : ""}${o.phone ? `\nPhone: ${o.phone}` : ""}${o.email ? `\nEmail: ${o.email}` : ""}${o.expiration ? `\nExpiration: ${o.expiration}` : ""}${o.address ? `\nAddress: ${o.address}` : ""}`).join("\n\n");
+  try { await navigator.clipboard.writeText(text); alert("Result list copied."); }
+  catch { prompt("Copy the result list:", text); }
+}
+
+function printConeResults(kind) {
+  const items = kind === "contracts" ? markersInCone(contractMarkers) : markersInCone(subMarkers);
+  if (!items.length) { alert("There are no results to print."); return; }
+  const title = kind === "contracts" ? "Contracts Inside NHC Forecast Cone" : "Subcontractors Inside NHC Forecast Cone";
+  const rows = items.map(o => `<tr><td>${escapeHtml(o.name || "")}</td><td>${escapeHtml(o.address || "")}</td><td>${escapeHtml(o.state || "")}</td><td>${escapeHtml(o.contact || "")}</td><td>${escapeHtml(o.phone || "")}</td><td>${escapeHtml(o.email || "")}</td><td>${escapeHtml(o.expiration || "")}</td></tr>`).join("");
+  const w = window.open("", "_blank");
+  if (!w) { alert("Please allow popups to print the report."); return; }
+  w.document.write(`<!doctype html><html><head><title>${title}</title><style>body{font-family:Arial;padding:24px}h1{font-size:22px}p{color:#555}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #bbb;padding:7px;text-align:left;vertical-align:top}th{background:#eef2f6}</style></head><body><h1>${title}</h1><p>Generated ${new Date().toLocaleString()} • ${items.length} result(s)</p><table><thead><tr><th>Name</th><th>Address</th><th>State</th><th>Contact</th><th>Phone</th><th>Email</th><th>Expiration</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+
+function focusConeResult(kind, index) {
+  const items = kind === "contracts" ? markersInCone(contractMarkers) : markersInCone(subMarkers);
+  const item = items[index];
+  if (!item) return;
+  closeStormPanel();
+  map.setView([item.lat, item.lon], Math.max(map.getZoom(), 8));
+  setTimeout(() => item.marker.openPopup(), 200);
+}
+
+function openConeResults(kind) {
+  const items = kind === "contracts" ? markersInCone(contractMarkers) : markersInCone(subMarkers);
+  const singular = kind === "contracts" ? "contract" : "subcontractor";
+  const title = kind === "contracts" ? "Contracts Inside NHC Cone" : "Subcontractors Inside NHC Cone";
+  if (items.length) zoomToItems(items, "");
+  const cards = items.length ? items.map((o,i) => `
+    <div class="result-card" onclick="focusConeResult('${kind}', ${i})">
+      <b>${escapeHtml(o.name || singular)}</b>
+      <div class="result-meta">
+        ${o.address ? `${escapeHtml(o.address)}<br>` : ""}
+        ${o.state ? `<b>State:</b> ${escapeHtml(o.state)}<br>` : ""}
+        ${o.contact ? `<b>Contact:</b> ${escapeHtml(o.contact)}<br>` : ""}
+        ${o.phone ? `<b>Phone:</b> <a href="tel:${escapeHtml(o.phone)}" onclick="event.stopPropagation()">${escapeHtml(o.phone)}</a><br>` : ""}
+        ${o.email ? `<b>Email:</b> <a href="mailto:${escapeHtml(o.email)}" onclick="event.stopPropagation()">${escapeHtml(o.email)}</a><br>` : ""}
+        ${o.expiration ? `<b>Expiration:</b> ${escapeHtml(o.expiration)}<br>` : ""}
+        ${o.notes ? `<b>Notes:</b> ${escapeHtml(o.notes)}` : ""}
+      </div>
+    </div>`).join("") : `<div class="result-empty">No ${singular}s are currently inside an active NHC forecast cone.</div>`;
+  document.getElementById("stormPanelBody").innerHTML = `
+    <h2>${title}</h2>
+    <div class="results-summary"><b>${items.length}</b> ${items.length === 1 ? singular : singular + "s"} currently inside the active cone.</div>
+    <div class="results-toolbar">
+      <button onclick="copyConeResults('${kind}')">Copy List</button>
+      <button onclick="downloadConeResults('${kind}')">Download CSV</button>
+      <button onclick="printConeResults('${kind}')">Print</button>
+    </div>
+    <div class="result-list">${cards}</div>`;
+  document.getElementById("stormPanel").classList.add("open");
+}
+
+function showConeContracts() { openConeResults("contracts"); }
+function showConeSubs() { openConeResults("subs"); }
 
 function runMapSearch() {
   const q = document.getElementById("mapSearch").value.trim().toLowerCase();
