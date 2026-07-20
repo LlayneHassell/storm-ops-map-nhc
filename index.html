@@ -39,6 +39,15 @@
     .quick-btn:hover,.header-btn:hover { filter:brightness(.95); }
     .status { position:fixed; z-index:9998; top:122px; left:12px; background:var(--panel); padding:12px 14px; border-radius:12px; box-shadow:var(--shadow); font-size:13px; width:330px; max-height:calc(100vh - 144px); overflow:auto; }
     .status-title { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .status-heading { display:flex; align-items:center; gap:7px; min-width:0; }
+    .status-live-dot { color:#22a447; font-size:12px; }
+    .status-toggle { border:0; cursor:pointer; border-radius:8px; background:#eaf0f6; color:var(--navy); padding:5px 9px; font-weight:700; flex:0 0 auto; }
+    .status-body { display:block; }
+    .status.collapsed { width:auto; max-height:none; overflow:hidden; padding:8px 10px; }
+    .status.collapsed .status-body { display:none; }
+    .status.collapsed .status-title { gap:6px; }
+    .status.collapsed .status-heading b { white-space:nowrap; }
+    .status.collapsed .status-toggle { padding:5px 8px; }
     .status small { display:block; opacity:.78; margin-top:7px; }
     .status-grid { display:grid; grid-template-columns:1fr auto; gap:4px 14px; margin-top:8px; }
     .status-grid b { text-align:right; }
@@ -112,6 +121,8 @@
       .quick-actions { top:126px; left:8px; right:8px; max-width:none; flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
       .quick-btn { white-space:nowrap; flex:0 0 auto; }
       .status { top:174px; left:8px; width:285px; max-width:calc(100vw - 16px); max-height:34vh; }
+      .status.collapsed { width:auto; max-width:calc(100vw - 16px); }
+      .status.collapsed .status-heading b { font-size:12px; }
       .legend { right:8px; bottom:8px; width:270px; max-width:calc(100vw - 16px); max-height:42vh; }
       .legend.collapsed { width:auto; }
       .side-panel { top:8px; right:8px; width:calc(100vw - 16px); height:calc(100vh - 16px); }
@@ -250,19 +261,26 @@ function stormSummaryHtml() {
 }
 
 function setStatus() {
-  document.getElementById("statusBox").innerHTML =
-    `<div class="status-title"><b>Live Operations Summary</b><span>●</span></div>
-     <div class="status-grid">
-       <span>Contracts loaded</span><b>${lastContractsCount}</b>
-       <span>Subcontractors loaded</span><b>${lastSubsCount}</b>
-       <span>Contracts inside cone</span><b>${contractsInConeCount}</b>
-       <span>Subs inside cone</span><b>${subsInConeCount}</b>
-       <span>NOAA alert polygons</span><b>${lastAlertsCount}</b>
-       <span>NHC cones</span><b>${lastNHCConesCount}</b>
-       <span>NHC track features</span><b>${lastNHCTracksCount}</b>
+  const statusBox = document.getElementById("statusBox");
+  const wasCollapsed = statusBox.classList.contains("collapsed");
+  statusBox.innerHTML =
+    `<div class="status-title">
+       <div class="status-heading"><span aria-hidden="true">📊</span><b>Live Operations Summary</b><span class="status-live-dot" title="Live data">●</span></div>
+       <button class="status-toggle" type="button" onclick="toggleStatusSummary()" aria-expanded="${!wasCollapsed}">${wasCollapsed ? "Show" : "Hide"}</button>
      </div>
-     ${stormSummaryHtml()}
-     <small class="nhc-note">NHC checked: ${escapeHtml(lastNHCUpdate)}${lastNHCMessage ? `<br>${escapeHtml(lastNHCMessage)}` : ""}</small>`;
+     <div class="status-body">
+       <div class="status-grid">
+         <span>Contracts loaded</span><b>${lastContractsCount}</b>
+         <span>Subcontractors loaded</span><b>${lastSubsCount}</b>
+         <span>Contracts inside cone</span><b>${contractsInConeCount}</b>
+         <span>Subs inside cone</span><b>${subsInConeCount}</b>
+         <span>NOAA alert polygons</span><b>${lastAlertsCount}</b>
+         <span>NHC cones</span><b>${lastNHCConesCount}</b>
+         <span>NHC track features</span><b>${lastNHCTracksCount}</b>
+       </div>
+       ${stormSummaryHtml()}
+       <small class="nhc-note">NHC checked: ${escapeHtml(lastNHCUpdate)}${lastNHCMessage ? `<br>${escapeHtml(lastNHCMessage)}` : ""}</small>
+     </div>`;
 }
 
 /*** HELPERS ***/
@@ -779,6 +797,25 @@ function updateHighlights() {
   setStatus();
 }
 
+function toggleStatusSummary(forceCollapsed) {
+  const box = document.getElementById("statusBox");
+  const shouldCollapse = typeof forceCollapsed === "boolean" ? forceCollapsed : !box.classList.contains("collapsed");
+  box.classList.toggle("collapsed", shouldCollapse);
+  const button = box.querySelector(".status-toggle");
+  if (button) {
+    button.textContent = shouldCollapse ? "Show" : "Hide";
+    button.setAttribute("aria-expanded", String(!shouldCollapse));
+  }
+  try { localStorage.setItem("lgsSummaryCollapsed", shouldCollapse ? "1" : "0"); } catch (e) {}
+}
+
+function initializeStatusSummary() {
+  let saved = null;
+  try { saved = localStorage.getItem("lgsSummaryCollapsed"); } catch (e) {}
+  const collapseByDefault = saved === null ? window.matchMedia("(max-width: 760px)").matches : saved === "1";
+  document.getElementById("statusBox").classList.toggle("collapsed", collapseByDefault);
+}
+
 function toggleLegend() {
   const box = document.getElementById("legendBox");
   box.classList.toggle("collapsed");
@@ -952,7 +989,8 @@ function closeStormPanel() { document.getElementById("stormPanel").classList.rem
 /*** AUTO-REFRESH ***/
 function start() {
   setStatus();
-  loadContracts();
+  initializeStatusSummary();
+loadContracts();
   loadSubs();
   loadNOAAAlerts();
   loadNHCForecasts();
