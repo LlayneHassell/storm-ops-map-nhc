@@ -46,6 +46,18 @@
     .status small { display:block; opacity:0.8; margin-top:6px; }
     .nhc-note { margin-top:6px; padding-top:6px; border-top:1px solid #ddd; }
     .leaflet-control-layers { font-size: 14px; }
+    .status { max-height: calc(100vh - 24px); overflow:auto; }
+    .status-grid { display:grid; grid-template-columns:1fr auto; gap:3px 14px; margin-top:6px; }
+    .status-grid b { text-align:right; }
+    .storm-card { margin-top:8px; padding-top:8px; border-top:1px solid #ddd; }
+    .storm-card-title { font-weight:700; }
+    .impact-badge { display:inline-block; margin-top:4px; padding:2px 6px; border-radius:10px; background:#f1e4ff; font-size:12px; }
+    .legend-row { margin-top:3px; }
+    @media (max-width: 700px) {
+      .status { max-width: 270px; font-size:12px; }
+      .leaflet-control-layers { font-size:12px; }
+      .legend { display:none; }
+    }
     .forecast-label {
       background: rgba(255,255,255,0.92);
       border: 1px solid #333;
@@ -68,8 +80,11 @@
 </div>
 
 <div class="legend">
-  <div><span class="dot" style="background:#d9534f;"></span><b>Contract</b></div>
-  <div><span class="dot" style="background:#0275d8;"></span><b>Subcontractor</b></div>
+  <div class="legend-row"><span class="dot" style="background:#2e8b57;"></span><b>Active contract</b></div>
+  <div class="legend-row"><span class="dot" style="background:#f0ad4e;"></span><b>Expires within 90 days</b></div>
+  <div class="legend-row"><span class="dot" style="background:#d9534f;"></span><b>Expired contract</b></div>
+  <div class="legend-row"><span class="dot" style="background:#0275d8;"></span><b>Subcontractor</b></div>
+  <div class="legend-row"><span class="dot" style="background:#c77dff;"></span><b>Inside NHC cone</b> (black outline)</div>
   <div style="margin-top:8px;">
     <b>Weather Alerts:</b> shaded polygons auto-update (NOAA).
   </div>
@@ -100,18 +115,22 @@ const contractsLayer = L.layerGroup().addTo(map);
 const subsLayer = L.layerGroup().addTo(map);
 const nhcConeLayer = L.layerGroup().addTo(map);
 const nhcTrackLayer = L.layerGroup().addTo(map);
+const nhcPointsLayer = L.layerGroup().addTo(map);
 
 L.control.layers({}, {
   "Contracts": contractsLayer,
   "Subcontractors": subsLayer,
   "NOAA Weather Alerts": alertsLayer,
   "NHC Forecast Cones": nhcConeLayer,
-  "NHC Forecast Tracks": nhcTrackLayer
+  "NHC Forecast Tracks": nhcTrackLayer,
+  "NHC Forecast Points": nhcPointsLayer
 }, { collapsed: false }).addTo(map);
 
 let contractMarkers = [];
 let subMarkers = [];
 let activeAlertPolygons = [];
+let activeConePolygons = [];
+let activeStorms = [];
 
 let lastContractsCount = 0;
 let lastSubsCount = 0;
@@ -120,17 +139,35 @@ let lastNHCConesCount = 0;
 let lastNHCTracksCount = 0;
 let lastNHCUpdate = "Not checked yet";
 let lastNHCMessage = "";
+let contractsInConeCount = 0;
+let subsInConeCount = 0;
+
+function stormSummaryHtml() {
+  if (!activeStorms.length) return `<div class="storm-card"><span class="storm-card-title">Active storms:</span> None published</div>`;
+  return activeStorms.map(storm => {
+    const detailBits = [storm.type, storm.advisory ? `Advisory ${storm.advisory}` : "", storm.wind ? `${storm.wind} kt` : "", storm.validTime].filter(Boolean);
+    return `<div class="storm-card">
+      <div class="storm-card-title">${escapeHtml(storm.name)}</div>
+      ${detailBits.length ? `<div>${detailBits.map(escapeHtml).join(" • ")}</div>` : ""}
+      <span class="impact-badge">Cone impact: ${contractsInConeCount} contracts / ${subsInConeCount} subs</span>
+    </div>`;
+  }).join("");
+}
 
 function setStatus() {
   document.getElementById("statusBox").innerHTML =
-    `<b>Storm Ops Map</b><br>
-     Contracts loaded: <b>${lastContractsCount}</b><br>
-     Subs loaded: <b>${lastSubsCount}</b><br>
-     Active alert polygons: <b>${lastAlertsCount}</b><br>
-     NHC cones: <b>${lastNHCConesCount}</b><br>
-     NHC tracks: <b>${lastNHCTracksCount}</b>
-     <small class="nhc-note">NHC checked: ${escapeHtml(lastNHCUpdate)}${lastNHCMessage ? `<br>${escapeHtml(lastNHCMessage)}` : ""}</small>
-     <small>If contracts/subs show 0: confirm LAT/LONG are numeric and run via localhost/Live Server.</small>`;
+    `<b>Storm Operations Dashboard</b>
+     <div class="status-grid">
+       <span>Contracts loaded</span><b>${lastContractsCount}</b>
+       <span>Subcontractors loaded</span><b>${lastSubsCount}</b>
+       <span>Contracts inside cone</span><b>${contractsInConeCount}</b>
+       <span>Subs inside cone</span><b>${subsInConeCount}</b>
+       <span>NOAA alert polygons</span><b>${lastAlertsCount}</b>
+       <span>NHC cones</span><b>${lastNHCConesCount}</b>
+       <span>NHC track features</span><b>${lastNHCTracksCount}</b>
+     </div>
+     ${stormSummaryHtml()}
+     <small class="nhc-note">NHC checked: ${escapeHtml(lastNHCUpdate)}${lastNHCMessage ? `<br>${escapeHtml(lastNHCMessage)}` : ""}</small>`;
 }
 
 /*** HELPERS ***/
@@ -166,20 +203,47 @@ function makePopup(title, lines, linkText, linkUrl) {
 }
 
 // Styles
-function contractStyle(isInsideAlert) {
+function parseExpirationDate(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const match = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  if (!match) return null;
+  let year = Number(match[3]);
+  if (year < 100) year += 2000;
+  return new Date(year, Number(match[1]) - 1, Number(match[2]), 23, 59, 59);
+}
+
+function contractExpirationStatus(expiration) {
+  const date = parseExpirationDate(expiration);
+  if (!date) return { key: "active", label: "Active / no valid expiration", color: "#2e8b57" };
+  const days = (date.getTime() - Date.now()) / 86400000;
+  if (days < 0) return { key: "expired", label: "Expired", color: "#d9534f" };
+  if (days <= 90) return { key: "expiring", label: "Expires within 90 days", color: "#f0ad4e" };
+  return { key: "active", label: "Active", color: "#2e8b57" };
+}
+
+function contractStyle(markerData = {}) {
+  const inCone = Boolean(markerData.insideCone);
+  const inAlert = Boolean(markerData.insideAlert);
+  const status = contractExpirationStatus(markerData.expiration);
   return {
-    radius: isInsideAlert ? 10 : 7,
-    color: isInsideAlert ? "#000" : "#fff",
-    weight: isInsideAlert ? 3 : 1,
-    fillColor: "#d9534f",
+    radius: inCone ? 11 : (inAlert ? 9 : 7),
+    color: inCone ? "#4b0082" : (inAlert ? "#000" : "#fff"),
+    weight: inCone ? 4 : (inAlert ? 3 : 1),
+    fillColor: status.color,
     fillOpacity: 0.95
   };
 }
-function subStyle(isInsideAlert) {
+function subStyle(markerData = {}) {
+  const inCone = Boolean(markerData.insideCone);
+  const inAlert = Boolean(markerData.insideAlert);
   return {
-    radius: isInsideAlert ? 10 : 7,
-    color: isInsideAlert ? "#000" : "#fff",
-    weight: isInsideAlert ? 3 : 1,
+    radius: inCone ? 11 : (inAlert ? 9 : 7),
+    color: inCone ? "#4b0082" : (inAlert ? "#000" : "#fff"),
+    weight: inCone ? 4 : (inAlert ? 3 : 1),
     fillColor: "#0275d8",
     fillOpacity: 0.95
   };
@@ -223,13 +287,16 @@ function loadContracts() {
       const number = getField(row, ["Number", "number", "Phone", "phone"]);
       const email = getField(row, ["Email", "email"]);
 
-      const marker = L.circleMarker([lat, lon], contractStyle(false)).addTo(contractsLayer);
+      const expirationStatus = contractExpirationStatus(exp);
+      const markerData = { lat, lon, expiration: exp, insideAlert: false, insideCone: false };
+      const marker = L.circleMarker([lat, lon], contractStyle(markerData)).addTo(contractsLayer);
 
       const popup = makePopup(
         name || "Contract",
         [
           state ? `<b>State:</b> ${escapeHtml(state)}` : "",
           exp ? `<b>Expiration:</b> ${escapeHtml(exp)}` : "",
+          `<b>Contract status:</b> ${escapeHtml(expirationStatus.label)}`,
           contact ? `<b>Contact:</b> ${escapeHtml(contact)}` : "",
           number ? `<b>Phone:</b> ${escapeHtml(number)}` : "",
           email ? `<b>Email:</b> ${escapeHtml(email)}` : ""
@@ -239,7 +306,7 @@ function loadContracts() {
       );
 
       marker.bindPopup(popup);
-      contractMarkers.push({ marker, lat, lon });
+      contractMarkers.push({ marker, ...markerData });
       count++;
     });
 
@@ -280,7 +347,8 @@ function loadSubs() {
         ? subName
         : (address ? `Subcontractor @ ${address}` : "Subcontractor");
 
-      const marker = L.circleMarker([lat, lon], subStyle(false)).addTo(subsLayer);
+      const markerData = { lat, lon, insideAlert: false, insideCone: false };
+      const marker = L.circleMarker([lat, lon], subStyle(markerData)).addTo(subsLayer);
 
       const popup = makePopup(
         title,
@@ -296,7 +364,7 @@ function loadSubs() {
       );
 
       marker.bindPopup(popup);
-      subMarkers.push({ marker, lat, lon });
+      subMarkers.push({ marker, ...markerData });
       count++;
     });
 
@@ -412,6 +480,7 @@ function nhcPopupLines(props = {}) {
 
 function drawNHCCone(geojson) {
   const features = geojson?.features || [];
+  activeConePolygons = features.filter(feature => feature.geometry);
   if (!features.length) return 0;
 
   L.geoJSON(geojson, {
@@ -434,63 +503,67 @@ function drawNHCCone(geojson) {
   return features.length;
 }
 
+function uniqueStormsFromFeatures(features) {
+  const byName = new Map();
+  for (const feature of features || []) {
+    const props = feature.properties || {};
+    const name = nhcFeatureTitle(props);
+    const current = byName.get(name) || { name, type: "", advisory: "", wind: "", validTime: "" };
+    current.type = current.type || props.stormtype || props.STORMTYPE || props.tcclass || props.TCCLASS || "";
+    current.advisory = current.advisory || props.advnum || props.ADVNUM || props.advisory || "";
+    current.wind = current.wind || props.maxwind || props.MAXWIND || props.windspd || props.WINDSPD || "";
+    current.validTime = current.validTime || props.validtime || props.VALIDTIME || props.dvlbl || props.DATELBL || "";
+    byName.set(name, current);
+  }
+  return [...byName.values()];
+}
+
 function drawNHCTrack(trackGeoJSON, pointsGeoJSON) {
   let count = 0;
-
   const tracks = trackGeoJSON?.features || [];
+  const points = pointsGeoJSON?.features || [];
+
   if (tracks.length) {
     L.geoJSON(trackGeoJSON, {
       style: { color: "#6a040f", weight: 3, opacity: 0.95 },
-      onEachFeature: (feature, layer) => {
-        layer.bindPopup(makePopup(
-          nhcFeatureTitle(feature.properties),
-          nhcPopupLines(feature.properties),
-          "Open NHC GIS Page",
-          "https://www.nhc.noaa.gov/gis/"
-        ));
-      }
+      onEachFeature: (feature, layer) => layer.bindPopup(makePopup(
+        nhcFeatureTitle(feature.properties), nhcPopupLines(feature.properties),
+        "Open NHC GIS Page", "https://www.nhc.noaa.gov/gis/"
+      ))
     }).addTo(nhcTrackLayer);
     count += tracks.length;
   }
 
-  const points = pointsGeoJSON?.features || [];
   if (points.length) {
     L.geoJSON(pointsGeoJSON, {
       pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
-        radius: 5,
-        color: "#6a040f",
-        weight: 2,
-        fillColor: "#fff",
-        fillOpacity: 1
+        radius: 5, color: "#6a040f", weight: 2, fillColor: "#fff", fillOpacity: 1
       }),
       onEachFeature: (feature, layer) => {
         const props = feature.properties || {};
         layer.bindPopup(makePopup(
-          nhcFeatureTitle(props),
-          nhcPopupLines(props),
-          "Open NHC GIS Page",
-          "https://www.nhc.noaa.gov/gis/"
+          nhcFeatureTitle(props), nhcPopupLines(props),
+          "Open NHC GIS Page", "https://www.nhc.noaa.gov/gis/"
         ));
-
         const label = props.dvlbl || props.DATELBL || props.fcsthr || props.tau;
         if (label !== undefined && label !== null && label !== "") {
-          layer.bindTooltip(String(label), {
-            permanent: false,
-            direction: "top",
-            className: "forecast-label"
-          });
+          layer.bindTooltip(String(label), { permanent:false, direction:"top", className:"forecast-label" });
         }
       }
-    }).addTo(nhcTrackLayer);
+    }).addTo(nhcPointsLayer);
     count += points.length;
   }
 
+  activeStorms = uniqueStormsFromFeatures([...points, ...tracks]);
   return count;
 }
 
 async function loadNHCForecasts() {
   nhcConeLayer.clearLayers();
   nhcTrackLayer.clearLayers();
+  nhcPointsLayer.clearLayers();
+  activeConePolygons = [];
+  activeStorms = [];
   lastNHCConesCount = 0;
   lastNHCTracksCount = 0;
   lastNHCMessage = "Checking NOAA tropical forecast service…";
@@ -512,6 +585,7 @@ async function loadNHCForecasts() {
     } else {
       lastNHCMessage = `Loaded ${lastNHCConesCount} cone feature(s) and ${lastNHCTracksCount} track/forecast feature(s).`;
     }
+    updateHighlights();
     setStatus();
   } catch (err) {
     console.error("NHC forecast load error:", err);
@@ -522,29 +596,40 @@ async function loadNHCForecasts() {
 }
 
 
-/*** HIGHLIGHT PINS INSIDE ALERT POLYGONS ***/
-function pointInsideAnyAlert(lon, lat) {
-  if (!activeAlertPolygons.length) return false;
+/*** HIGHLIGHT PINS INSIDE ALERTS AND NHC CONES ***/
+function pointInsidePolygons(lon, lat, polygons) {
+  if (!polygons.length) return false;
   const pt = turf.point([lon, lat]);
-
-  for (const alert of activeAlertPolygons) {
+  for (const feature of polygons) {
     try {
-      const polyFeature = turf.feature(alert.geometry);
-      if (turf.booleanPointInPolygon(pt, polyFeature)) return true;
-    } catch {}
+      if (!feature.geometry) continue;
+      if (turf.booleanPointInPolygon(pt, turf.feature(feature.geometry))) return true;
+    } catch (err) {
+      console.debug("Polygon check skipped", err);
+    }
   }
   return false;
 }
 
 function updateHighlights() {
+  contractsInConeCount = 0;
+  subsInConeCount = 0;
+
   contractMarkers.forEach(o => {
-    const inside = pointInsideAnyAlert(o.lon, o.lat);
-    o.marker.setStyle(contractStyle(inside));
+    o.insideAlert = pointInsidePolygons(o.lon, o.lat, activeAlertPolygons);
+    o.insideCone = pointInsidePolygons(o.lon, o.lat, activeConePolygons);
+    if (o.insideCone) contractsInConeCount++;
+    o.marker.setStyle(contractStyle(o));
   });
+
   subMarkers.forEach(o => {
-    const inside = pointInsideAnyAlert(o.lon, o.lat);
-    o.marker.setStyle(subStyle(inside));
+    o.insideAlert = pointInsidePolygons(o.lon, o.lat, activeAlertPolygons);
+    o.insideCone = pointInsidePolygons(o.lon, o.lat, activeConePolygons);
+    if (o.insideCone) subsInConeCount++;
+    o.marker.setStyle(subStyle(o));
   });
+
+  setStatus();
 }
 
 /*** AUTO-REFRESH ***/
