@@ -16,84 +16,131 @@
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <style>
-    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-    #map { width: 100%; height: 100vh; }
-    .legend {
-      position: absolute;
-      bottom: 12px;
-      left: 12px;
-      background: white;
-      padding: 10px 12px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      font-size: 14px;
-      line-height: 1.3;
-      max-width: 340px;
-    }
-    .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
-
-    .status {
-      position:absolute;
-      top:12px;
-      left:12px;
-      background:#fff;
-      padding:10px 12px;
-      border-radius:10px;
-      box-shadow:0 2px 10px rgba(0,0,0,0.2);
-      font-size:14px;
-      max-width: 460px;
-    }
-    .status small { display:block; opacity:0.8; margin-top:6px; }
-    .nhc-note { margin-top:6px; padding-top:6px; border-top:1px solid #ddd; }
-    .leaflet-control-layers { font-size: 14px; }
-    .status { max-height: calc(100vh - 24px); overflow:auto; }
-    .status-grid { display:grid; grid-template-columns:1fr auto; gap:3px 14px; margin-top:6px; }
+    :root { --navy:#0b2545; --blue:#133c67; --panel:#ffffff; --shadow:0 4px 18px rgba(0,0,0,.22); }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:0; font-family:Arial,sans-serif; background:#eef2f6; }
+    #map { width:100%; height:100vh; }
+    .app-header { position:absolute; z-index:1000; top:12px; left:12px; right:12px; height:56px; background:linear-gradient(135deg,var(--navy),var(--blue)); color:#fff; border-radius:12px; box-shadow:var(--shadow); display:flex; align-items:center; padding:0 14px; gap:12px; }
+    .brand-mark { width:38px; height:38px; border-radius:9px; background:#fff; color:var(--navy); display:grid; place-items:center; font-size:22px; font-weight:700; }
+    .brand-copy { min-width:180px; }
+    .brand-title { font-weight:700; font-size:17px; line-height:1.1; }
+    .brand-subtitle { font-size:12px; opacity:.82; margin-top:2px; }
+    .search-wrap { margin-left:auto; display:flex; gap:6px; align-items:center; min-width:260px; }
+    #mapSearch { width:260px; max-width:34vw; border:0; border-radius:8px; padding:9px 10px; outline:none; }
+    .header-btn,.quick-btn,.panel-close,.legend-toggle { border:0; cursor:pointer; border-radius:8px; font-weight:700; }
+    .header-btn { background:#fff; color:var(--navy); padding:9px 11px; }
+    .quick-actions { position:absolute; z-index:1000; top:78px; left:12px; display:flex; flex-wrap:wrap; gap:6px; max-width:720px; }
+    .quick-btn { background:#fff; color:#18324f; padding:8px 10px; box-shadow:0 2px 9px rgba(0,0,0,.18); }
+    .quick-btn:hover,.header-btn:hover { filter:brightness(.95); }
+    .status { position:absolute; z-index:900; top:122px; left:12px; background:var(--panel); padding:12px 14px; border-radius:12px; box-shadow:var(--shadow); font-size:13px; width:330px; max-height:calc(100vh - 144px); overflow:auto; }
+    .status-title { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .status small { display:block; opacity:.78; margin-top:7px; }
+    .status-grid { display:grid; grid-template-columns:1fr auto; gap:4px 14px; margin-top:8px; }
     .status-grid b { text-align:right; }
-    .storm-card { margin-top:8px; padding-top:8px; border-top:1px solid #ddd; }
-    .storm-card-title { font-weight:700; }
-    .impact-badge { display:inline-block; margin-top:4px; padding:2px 6px; border-radius:10px; background:#f1e4ff; font-size:12px; }
-    .legend-row { margin-top:3px; }
-    @media (max-width: 700px) {
-      .status { max-width: 270px; font-size:12px; }
-      .leaflet-control-layers { font-size:12px; }
-      .legend { display:none; }
+    .storm-card { margin-top:9px; padding-top:9px; border-top:1px solid #ddd; cursor:pointer; }
+    .storm-card:hover { background:#f7f9fc; }
+    .storm-card-title { font-weight:700; color:var(--navy); }
+    .impact-badge { display:inline-block; margin-top:5px; padding:3px 7px; border-radius:10px; background:#f1e4ff; font-size:11px; }
+    .legend { position:absolute; z-index:900; bottom:12px; right:12px; background:#fff; border-radius:12px; box-shadow:var(--shadow); font-size:12px; line-height:1.3; width:295px; max-height:55vh; overflow:auto; }
+    .legend-header { position:sticky; top:0; background:#fff; display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e2e2e2; }
+    .legend-body { padding:10px 12px; }
+    .legend.collapsed .legend-body { display:none; }
+    .legend.collapsed { width:auto; }
+    .legend-toggle { background:#eaf0f6; color:var(--navy); padding:4px 8px; }
+    .legend-section { margin-top:9px; padding-top:7px; border-top:1px solid #e5e5e5; }
+    .legend-section:first-child { margin-top:0; padding-top:0; border-top:0; }
+    .legend-section-title { font-weight:700; color:var(--navy); margin-bottom:4px; }
+    .legend-row { display:flex; align-items:center; gap:7px; margin:4px 0; }
+    .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; flex:0 0 auto; border:1px solid rgba(0,0,0,.25); }
+    .swatch-line { width:22px; height:0; border-top:4px solid; border-radius:0; }
+    .swatch-area { width:20px; height:12px; border-radius:3px; }
+    .swatch-outline { background:#fff; border:4px solid #4b0082; }
+    .side-panel { position:absolute; z-index:1100; top:12px; right:12px; width:360px; max-width:calc(100vw - 24px); height:calc(100vh - 24px); background:#fff; border-radius:12px; box-shadow:var(--shadow); transform:translateX(calc(100% + 24px)); transition:transform .25s ease; overflow:auto; }
+    .side-panel.open { transform:translateX(0); }
+    .side-panel-header { position:sticky; top:0; background:var(--navy); color:#fff; padding:14px; display:flex; justify-content:space-between; align-items:center; }
+    .panel-close { background:#fff; color:var(--navy); padding:6px 9px; }
+    .side-panel-body { padding:14px; }
+    .storm-detail { border-bottom:1px solid #ddd; padding:10px 0; }
+    .result-list { margin-top:8px; max-height:240px; overflow:auto; }
+    .result-item { padding:8px; border-bottom:1px solid #eee; cursor:pointer; }
+    .result-item:hover { background:#f2f6fa; }
+    .forecast-label { background:rgba(255,255,255,.92); border:1px solid #333; border-radius:4px; color:#111; font-weight:bold; padding:1px 4px; box-shadow:none; }
+    .leaflet-control-layers { font-size:13px; }
+    a { word-break:break-word; }
+    @media (max-width:760px) {
+      .app-header { height:auto; min-height:58px; flex-wrap:wrap; padding:9px 10px; }
+      .brand-copy { min-width:150px; }
+      .search-wrap { width:100%; margin-left:0; }
+      #mapSearch { max-width:none; width:100%; }
+      .quick-actions { top:116px; right:12px; }
+      .status { top:166px; width:285px; max-height:42vh; }
+      .legend { width:270px; }
+      .leaflet-control-layers { display:none; }
     }
-    .forecast-label {
-      background: rgba(255,255,255,0.92);
-      border: 1px solid #333;
-      border-radius: 4px;
-      color: #111;
-      font-weight: bold;
-      padding: 1px 4px;
-      box-shadow: none;
-    }
-    a { word-break: break-word; }
   </style>
 </head>
 
 <body>
 <div id="map"></div>
 
-<div class="status" id="statusBox">
-  Loading…
-  <small>Open this via Live Server / localhost (not file://) so the sheets can load.</small>
+<div class="app-header">
+  <div class="brand-mark">LGS</div>
+  <div class="brand-copy">
+    <div class="brand-title">Looks Great Services</div>
+    <div class="brand-subtitle">Storm Operations Dashboard</div>
+  </div>
+  <div class="search-wrap">
+    <input id="mapSearch" type="search" placeholder="Search contract, subcontractor, state, address…" />
+    <button class="header-btn" onclick="runMapSearch()">Search</button>
+  </div>
 </div>
 
-<div class="legend">
-  <div class="legend-row"><span class="dot" style="background:#2e8b57;"></span><b>Active contract</b></div>
-  <div class="legend-row"><span class="dot" style="background:#f0ad4e;"></span><b>Expires within 90 days</b></div>
-  <div class="legend-row"><span class="dot" style="background:#d9534f;"></span><b>Expired contract</b></div>
-  <div class="legend-row"><span class="dot" style="background:#0275d8;"></span><b>Subcontractor</b></div>
-  <div class="legend-row"><span class="dot" style="background:#c77dff;"></span><b>Inside NHC cone</b> (black outline)</div>
-  <div style="margin-top:8px;">
-    <b>Weather Alerts:</b> shaded polygons auto-update (NOAA).
+<div class="quick-actions">
+  <button class="quick-btn" onclick="zoomToStorm()">🌀 Zoom to Storm</button>
+  <button class="quick-btn" onclick="showConeContracts()">📍 Contracts in Cone</button>
+  <button class="quick-btn" onclick="showConeSubs()">🚚 Subs in Cone</button>
+  <button class="quick-btn" onclick="resetMapView()">↺ Reset View</button>
+  <button class="quick-btn" onclick="openStormPanel()">Storm Details</button>
+</div>
+
+<div class="status" id="statusBox">Loading…</div>
+
+<div class="legend" id="legendBox">
+  <div class="legend-header"><b>Map Color Key</b><button class="legend-toggle" onclick="toggleLegend()">Hide</button></div>
+  <div class="legend-body">
+    <div class="legend-section">
+      <div class="legend-section-title">Contracts</div>
+      <div class="legend-row"><span class="swatch" style="background:#2e8b57"></span>Active contract</div>
+      <div class="legend-row"><span class="swatch" style="background:#f0ad4e"></span>Expires within 90 days</div>
+      <div class="legend-row"><span class="swatch" style="background:#d9534f"></span>Expired contract</div>
+      <div class="legend-row"><span class="swatch swatch-outline"></span>Purple outline = inside NHC cone</div>
+      <div class="legend-row"><span class="swatch" style="background:#fff;border:3px solid #000"></span>Black outline = active NOAA alert</div>
+    </div>
+    <div class="legend-section">
+      <div class="legend-section-title">Subcontractors</div>
+      <div class="legend-row"><span class="swatch" style="background:#0275d8"></span>Subcontractor</div>
+      <div class="legend-row"><span class="swatch swatch-outline"></span>Inside NHC cone</div>
+    </div>
+    <div class="legend-section">
+      <div class="legend-section-title">Tropical Forecast</div>
+      <div class="legend-row"><span class="swatch swatch-area" style="background:#c77dff;border:2px solid #7b2cbf"></span>NHC forecast cone</div>
+      <div class="legend-row"><span class="swatch swatch-line" style="border-color:#6a040f"></span>Forecast track</div>
+      <div class="legend-row"><span class="swatch" style="background:#fff;border:2px solid #6a040f"></span>Forecast point</div>
+    </div>
+    <div class="legend-section">
+      <div class="legend-section-title">NOAA Alerts</div>
+      <div class="legend-row"><span class="swatch swatch-area" style="background:#ff2d2d"></span>Tornado warning</div>
+      <div class="legend-row"><span class="swatch swatch-area" style="background:#ff8c00"></span>Hurricane warning</div>
+      <div class="legend-row"><span class="swatch swatch-area" style="background:#ffd43b"></span>Flash flood warning</div>
+      <div class="legend-row"><span class="swatch swatch-area" style="background:#3388ff"></span>Tropical storm warning</div>
+      <div class="legend-row"><span class="swatch swatch-area" style="background:#9b59b6"></span>Other alert</div>
+    </div>
   </div>
-  <div style="margin-top:6px;">
-    <b>NHC:</b> forecast cones and tracks auto-update when published.
-  </div>
-  <div style="margin-top:6px;">
-    Pins inside an active alert get <b>highlighted</b>.
-  </div>
+</div>
+
+<div class="side-panel" id="stormPanel">
+  <div class="side-panel-header"><b>Storm & Operations Details</b><button class="panel-close" onclick="closeStormPanel()">Close</button></div>
+  <div class="side-panel-body" id="stormPanelBody"></div>
 </div>
 
 <script>
@@ -141,12 +188,14 @@ let lastNHCUpdate = "Not checked yet";
 let lastNHCMessage = "";
 let contractsInConeCount = 0;
 let subsInConeCount = 0;
+let lastConeBounds = null;
+const DEFAULT_VIEW = { center:[39,-98], zoom:4 };
 
 function stormSummaryHtml() {
   if (!activeStorms.length) return `<div class="storm-card"><span class="storm-card-title">Active storms:</span> None published</div>`;
   return activeStorms.map(storm => {
     const detailBits = [storm.type, storm.advisory ? `Advisory ${storm.advisory}` : "", storm.wind ? `${storm.wind} kt` : "", storm.validTime].filter(Boolean);
-    return `<div class="storm-card">
+    return `<div class="storm-card" onclick="openStormPanel()">
       <div class="storm-card-title">${escapeHtml(storm.name)}</div>
       ${detailBits.length ? `<div>${detailBits.map(escapeHtml).join(" • ")}</div>` : ""}
       <span class="impact-badge">Cone impact: ${contractsInConeCount} contracts / ${subsInConeCount} subs</span>
@@ -156,7 +205,7 @@ function stormSummaryHtml() {
 
 function setStatus() {
   document.getElementById("statusBox").innerHTML =
-    `<b>Storm Operations Dashboard</b>
+    `<div class="status-title"><b>Live Operations Summary</b><span>●</span></div>
      <div class="status-grid">
        <span>Contracts loaded</span><b>${lastContractsCount}</b>
        <span>Subcontractors loaded</span><b>${lastSubsCount}</b>
@@ -288,7 +337,7 @@ function loadContracts() {
       const email = getField(row, ["Email", "email"]);
 
       const expirationStatus = contractExpirationStatus(exp);
-      const markerData = { lat, lon, expiration: exp, insideAlert: false, insideCone: false };
+      const markerData = { lat, lon, expiration: exp, name: name || "Contract", state, searchText: [name,state,contact,email].filter(Boolean).join(" ").toLowerCase(), insideAlert: false, insideCone: false };
       const marker = L.circleMarker([lat, lon], contractStyle(markerData)).addTo(contractsLayer);
 
       const popup = makePopup(
@@ -347,7 +396,7 @@ function loadSubs() {
         ? subName
         : (address ? `Subcontractor @ ${address}` : "Subcontractor");
 
-      const markerData = { lat, lon, insideAlert: false, insideCone: false };
+      const markerData = { lat, lon, name: title, state, address, searchText: [title,address,state,contact,email,phone,notes].filter(Boolean).join(" ").toLowerCase(), insideAlert: false, insideCone: false };
       const marker = L.circleMarker([lat, lon], subStyle(markerData)).addTo(subsLayer);
 
       const popup = makePopup(
@@ -378,6 +427,15 @@ function loadSubs() {
   });
 }
 
+function alertStyleForEvent(eventName) {
+  const e = String(eventName || "").toLowerCase();
+  if (e.includes("tornado warning")) return { color:"#b30000", fillColor:"#ff2d2d" };
+  if (e.includes("hurricane warning")) return { color:"#cc5c00", fillColor:"#ff8c00" };
+  if (e.includes("flash flood warning")) return { color:"#b89b00", fillColor:"#ffd43b" };
+  if (e.includes("tropical storm warning")) return { color:"#005bbb", fillColor:"#3388ff" };
+  return { color:"#6c3483", fillColor:"#9b59b6" };
+}
+
 /*** NOAA ALERTS (AUTOMATIC) ***/
 async function loadNOAAAlerts() {
   alertsLayer.clearLayers();
@@ -402,8 +460,9 @@ async function loadNOAAAlerts() {
       const ends = f.properties?.ends || f.properties?.expires || "";
       const link = f.properties?.uri || "";
 
+      const alertColors = alertStyleForEvent(eventName);
       const layer = L.geoJSON(f, {
-        style: { color: "#ff0000", weight: 2, fillOpacity: 0.18 }
+        style: { color: alertColors.color, fillColor: alertColors.fillColor, weight: 2, fillOpacity: 0.22 }
       }).addTo(alertsLayer);
 
       layer.bindPopup(makePopup(
@@ -483,7 +542,7 @@ function drawNHCCone(geojson) {
   activeConePolygons = features.filter(feature => feature.geometry);
   if (!features.length) return 0;
 
-  L.geoJSON(geojson, {
+  const coneGeoLayer = L.geoJSON(geojson, {
     style: {
       color: "#7b2cbf",
       weight: 2,
@@ -499,6 +558,7 @@ function drawNHCCone(geojson) {
       ));
     }
   }).addTo(nhcConeLayer);
+  try { lastConeBounds = coneGeoLayer.getBounds(); } catch {}
 
   return features.length;
 }
@@ -564,6 +624,7 @@ async function loadNHCForecasts() {
   nhcPointsLayer.clearLayers();
   activeConePolygons = [];
   activeStorms = [];
+  lastConeBounds = null;
   lastNHCConesCount = 0;
   lastNHCTracksCount = 0;
   lastNHCMessage = "Checking NOAA tropical forecast service…";
@@ -631,6 +692,80 @@ function updateHighlights() {
 
   setStatus();
 }
+
+function toggleLegend() {
+  const box = document.getElementById("legendBox");
+  box.classList.toggle("collapsed");
+  box.querySelector("button").textContent = box.classList.contains("collapsed") ? "Show" : "Hide";
+}
+
+function resetMapView() {
+  map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+}
+
+function zoomToStorm() {
+  if (lastConeBounds && lastConeBounds.isValid()) map.fitBounds(lastConeBounds.pad(0.12));
+  else alert("No active NHC forecast cone is currently available.");
+}
+
+function markersInCone(items) { return items.filter(x => x.insideCone); }
+
+function zoomToItems(items, emptyMessage) {
+  if (!items.length) { alert(emptyMessage); return; }
+  const bounds = L.latLngBounds(items.map(x => [x.lat, x.lon]));
+  map.fitBounds(bounds.pad(0.18));
+}
+
+function showConeContracts() { zoomToItems(markersInCone(contractMarkers), "No contracts are currently inside an active NHC forecast cone."); }
+function showConeSubs() { zoomToItems(markersInCone(subMarkers), "No subcontractors are currently inside an active NHC forecast cone."); }
+
+function runMapSearch() {
+  const q = document.getElementById("mapSearch").value.trim().toLowerCase();
+  if (!q) return;
+  const matches = [...contractMarkers, ...subMarkers].filter(x => (x.searchText || "").includes(q));
+  if (!matches.length) { alert(`No map results found for “${q}”.`); return; }
+  zoomToItems(matches, "No matches found.");
+  if (matches.length === 1) matches[0].marker.openPopup();
+  else {
+    const body = matches.slice(0,100).map((x,i)=>`<div class="result-item" onclick="focusSearchResult(${i})"><b>${escapeHtml(x.name || "Result")}</b>${x.state ? `<br><small>${escapeHtml(x.state)}</small>` : ""}</div>`).join("");
+    window.currentSearchResults = matches;
+    document.getElementById("stormPanelBody").innerHTML = `<h3>Search Results (${matches.length})</h3><div class="result-list">${body}</div>`;
+    document.getElementById("stormPanel").classList.add("open");
+  }
+}
+
+function focusSearchResult(index) {
+  const item = (window.currentSearchResults || [])[index];
+  if (!item) return;
+  map.setView([item.lat,item.lon], 8);
+  item.marker.openPopup();
+}
+
+document.getElementById("mapSearch").addEventListener("keydown", e => { if (e.key === "Enter") runMapSearch(); });
+
+function openStormPanel() {
+  const stormsHtml = activeStorms.length ? activeStorms.map(storm => `
+    <div class="storm-detail">
+      <h3>${escapeHtml(storm.name)}</h3>
+      ${storm.type ? `<div><b>Classification:</b> ${escapeHtml(storm.type)}</div>` : ""}
+      ${storm.advisory ? `<div><b>Advisory:</b> ${escapeHtml(storm.advisory)}</div>` : ""}
+      ${storm.wind ? `<div><b>Maximum wind:</b> ${escapeHtml(storm.wind)} kt</div>` : ""}
+      ${storm.validTime ? `<div><b>Forecast time:</b> ${escapeHtml(storm.validTime)}</div>` : ""}
+    </div>`).join("") : `<p>No active NHC tropical forecast is currently published.</p>`;
+  const contractNames = markersInCone(contractMarkers).slice(0,50).map(x=>`<li>${escapeHtml(x.name || "Contract")}${x.state ? ` — ${escapeHtml(x.state)}` : ""}</li>`).join("");
+  const subNames = markersInCone(subMarkers).slice(0,50).map(x=>`<li>${escapeHtml(x.name || "Subcontractor")}${x.state ? ` — ${escapeHtml(x.state)}` : ""}</li>`).join("");
+  document.getElementById("stormPanelBody").innerHTML = `
+    ${stormsHtml}
+    <h3>Operational Impact</h3>
+    <div><b>Contracts in cone:</b> ${contractsInConeCount}</div>
+    <div><b>Subcontractors in cone:</b> ${subsInConeCount}</div>
+    ${contractNames ? `<h4>Contracts</h4><ul>${contractNames}</ul>` : ""}
+    ${subNames ? `<h4>Subcontractors</h4><ul>${subNames}</ul>` : ""}
+    <small>Lists are limited to the first 50 results in each category.</small>`;
+  document.getElementById("stormPanel").classList.add("open");
+}
+
+function closeStormPanel() { document.getElementById("stormPanel").classList.remove("open"); }
 
 /*** AUTO-REFRESH ***/
 function start() {
